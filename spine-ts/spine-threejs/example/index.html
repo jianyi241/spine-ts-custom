@@ -1,0 +1,147 @@
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>八重神子 - Spine Animation</title>
+  <script src="https://unpkg.com/three@0.141.0/build/three.js"></script>
+  <script src="../dist/iife/spine-threejs.js"></script>
+  <script src="./OrbitalControls.js"></script>
+</head>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+  }
+
+  body,
+  html {
+    height: 100%;
+    background: #1a1a2e;
+  }
+
+  canvas {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+
+<body>
+<script>
+  (function () {
+    let scene, camera, renderer;
+    let geometry, material, mesh, skeletonMesh;
+    let assetManager;
+    let canvas;
+    let controls;
+    let lastFrameTime = Date.now() / 1000;
+    let elapsedTime = 0;
+
+    let baseUrl = "assets/";
+    let skeletonFile = "bachong.json";
+    let atlasFile = skeletonFile
+            .replace("-pro", "")
+            .replace("-ess", "")
+            .replace(".json", ".atlas");
+    /** 在 load 里根据 JSON 的 animations 字段解析，bachong 用 "animation"，shaonv 用 "a" 等 */
+    let animation = 'animation';
+
+    function init() {
+      let width = window.innerWidth,
+              height = window.innerHeight;
+      camera = new THREE.PerspectiveCamera(75, width / height, 1, 3000);
+      camera.position.y = 0;
+      camera.position.z = 600;
+      scene = new THREE.Scene();
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(width, height);
+      renderer.setClearColor(0x1a1a2e, 1);
+      document.body.appendChild(renderer.domElement);
+      canvas = renderer.domElement;
+      controls = new OrbitControls(camera, renderer.domElement);
+
+      assetManager = new spine.AssetManager(baseUrl);
+      assetManager.loadText(skeletonFile);
+      assetManager.loadTextureAtlas(atlasFile);
+
+      requestAnimationFrame(load);
+    }
+
+    function load() {
+      if (assetManager.isLoadingComplete()) {
+        geometry = new THREE.BoxGeometry(1, 1, 1);
+        material = new THREE.MeshBasicMaterial({ visible: false });
+        mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        var atlas = assetManager.require(atlasFile);
+        var atlasLoader = new spine.AtlasAttachmentLoader(atlas);
+        var skeletonJson = new spine.SkeletonJson(atlasLoader);
+
+        skeletonJson.scale = 0.35;
+
+        // 读取 json 文本并解析 extra 字段（原创扩展数据，驱动弹簧物理动画）
+        var rawText = assetManager.require(skeletonFile);
+        var rawJson = JSON.parse(rawText);
+        var skeletonData = skeletonJson.readSkeletonData(rawText);
+
+        // 注入自定义 extra 字段到 skeletonData（标准 spine-core 不解析这些字段）
+        skeletonData.extra       = rawJson.extra       || {};
+        skeletonData.extraSlot   = rawJson.extraSlot   || {};
+        skeletonData.extraConfig = rawJson.extraConfig || { timeScale: 1 };
+
+        // var animNames = Object.keys(rawJson.animations || {});
+        // animation = animNames.indexOf("animation") >= 0 ? "animation" : animNames[0];
+        // if (!animation) {
+        //   console.error("JSON 中没有任何动画:", skeletonFile);
+        //   return;
+        // }
+
+        skeletonMesh = new spine.SkeletonMesh(
+          skeletonData,
+          function(parameters) {
+            parameters.depthTest  = false;
+            parameters.depthWrite = false;
+          }
+        );
+        skeletonMesh.state.setAnimation(0, animation, true);
+        mesh.add(skeletonMesh);
+
+        requestAnimationFrame(render);
+      } else {
+        requestAnimationFrame(load);
+      }
+    }
+
+    function render() {
+      var now = Date.now() / 1000;
+      var delta = now - lastFrameTime;
+      lastFrameTime = now;
+      elapsedTime += delta;
+
+      resize();
+      controls.update();
+
+      // 传入 deltaTime 和累计 elapsedTime，驱动弹簧骨骼物理动画
+      skeletonMesh.update(delta, elapsedTime);
+
+      renderer.render(scene, camera);
+      requestAnimationFrame(render);
+    }
+
+    function resize() {
+      var w = window.innerWidth;
+      var h = window.innerHeight;
+      if (canvas.width != w || canvas.height != h) {
+        canvas.width  = w;
+        canvas.height = h;
+      }
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    init();
+  })();
+</script>
+</body>
+</html>

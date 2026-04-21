@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Spine 多资源组合 — 固定设计分辨率（整体等比）</title>
+  <script src="https://unpkg.com/three@0.141.0/build/three.js"></script>
+  <script src="../dist/iife/spine-threejs.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: #1a1a2e; }
+    /** 整块「逻辑画布」= #stage-root 的盒模型区域；长宽比可与设计分辨率不同，四周会留白（letterbox）。 */
+    .page {
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #stage-root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      flex-shrink: 0;
+      border-radius: 12px;
+      overflow: hidden;
+      /* box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5); */
+      outline: 1px solid rgba(255, 255, 255, 0.12);
+      background: url('assets/p7_bg.png') no-repeat center center;
+      background-size: cover;
+    }
+    #hint {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      max-width: min(520px, 92vw);
+      padding: 10px 12px;
+      font: 13px/1.45 system-ui, sans-serif;
+      color: #e8e8f0;
+      background: rgba(0, 0, 0, 0.45);
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    #hint code { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div id="stage-root"></div>
+  </div>
+  <!-- <div id="hint">
+    本页开启 <code>fixedLogicalSize</code> + <code>width/height</code>（720×1280 设计稿）：<strong>逻辑画布像素不变</strong>，仅整块 WebGL 在容器内<strong>等比缩放</strong>，
+    角色与 tips 的相对关系与缩放前一致（如同一张图）。容器与 9:16 不一致时四周为留白。<kbd>F12</kbd> 看指针事件。
+  </div> -->
+  <script>
+    (function () {
+      var root = document.getElementById('stage-root');
+
+      /**
+       * 相对「整幅逻辑画布」的比例（0~1），两套动画作为一个整体适配窗口。
+       * 例：w:0.74 表示占位宽度 = 画布宽的 74%。
+       */
+      var LAYOUT = {
+        role: { x: 0.1, y: 0, w: 0.74, h: 1 },
+        tips: { x: 0.47, y: 0.295, w: 0.08, h: 0.08 },
+      };
+
+      var stage = new spine.SpineCompositeStage({
+        container: root,
+        pathPrefix: 'assets/',
+        /** null = 透明清屏，透出 #stage-root 的 CSS 背景（需引擎内 setClearColor alpha=0） */
+        background: null,
+        /** 固定设计分辨率：布局始终在 720×1280 上计算，缩放只改变 CSS 显示尺寸 */
+        width: 720,
+        height: 720,
+        fixedLogicalSize: true,
+        layers: [
+          {
+            id: 'role',
+            atlas: 'shaonv.atlas',
+            json: 'shaonv.json',
+            scale: 0.35,
+            animation: 'a',
+            layoutRelative: LAYOUT.role,
+            layout: { x: 0, y: 0, width: 100, height: 100, fit: 'contain' },
+            zIndex: 0,
+          },
+          {
+            id: 'tips',
+            atlas: 'p7_tips.atlas',
+            json: 'p7_tips.json',
+            scale: 1,
+            animation: 'animation2',
+            layoutRelative: LAYOUT.tips,
+            layout: { x: 0, y: 0, width: 100, height: 100, fit: 'contain' },
+            zIndex: 10,
+          },
+        ],
+        onLoad: function () {
+          console.log('[composite] 两套资源已加载（固定 720×1280 逻辑画布，DOM 等比缩放）');
+        },
+        onError: function (err, layerId) {
+          console.error('[composite]', layerId || '', err);
+        },
+        onPointerDown: function (d) {
+          console.log('[composite] pointerdown', d.layerId, d.offsetX, d.offsetY);
+        },
+        onLayerPointerEnter: function (id, d) {
+          console.log('[composite] enter', id, d.offsetX, d.offsetY);
+        },
+        onLayerPointerLeave: function (id) {
+          console.log('[composite] leave', id);
+        },
+      });
+
+      window.addEventListener('resize', function () {
+        stage.refitFromContainer();
+      });
+    })();
+  </script>
+</body>
+</html>

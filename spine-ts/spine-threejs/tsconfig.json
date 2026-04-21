@@ -1,0 +1,26 @@
+{
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"baseUrl": ".",
+		"rootDir": "./src",
+		"outDir": "./dist",
+		"paths": {
+			"@esotericsoftware/spine-core": [
+				"../spine-core/src"
+			]
+		}
+	},
+	"include": [
+		"**/*.ts",
+		"src/OrbitControls.js"
+	],
+	"exclude": [
+		"dist/**/*.d.ts",
+		"example/**"
+	],
+	"references": [
+		{
+			"path": "../spine-core"
+		}
+	]
+}
