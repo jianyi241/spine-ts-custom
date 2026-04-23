@@ -37,7 +37,7 @@
     let elapsedTime = 0;
 
     let baseUrl = "assets/";
-    let skeletonFile = "bachong.json";
+    let skeletonFile = "wendisp.json";
     let atlasFile = skeletonFile
             .replace("-pro", "")
             .replace("-ess", "")
@@ -83,6 +83,15 @@
         var rawText = assetManager.require(skeletonFile);
         var rawJson = JSON.parse(rawText);
         var skeletonData = skeletonJson.readSkeletonData(rawText);
+
+        // 运行时与导出版本须一致：本示例使用 spine 4.2 运行时。3.8 等旧版 JSON 在 apply 动画后骨骼会出现 NaN（Three.js 的 boundingSphere 报错是连带现象）。
+        var exportVer = skeletonData.version || "";
+        if (exportVer && exportVer.indexOf("4.2") !== 0) {
+          console.warn(
+            "[Spine] 骨骼 JSON 的 skeleton.spine 为 " + exportVer +
+            "，与当前 4.2 运行时不匹配。请用 Spine Editor 4.2.x 打开工程并重新导出 JSON（必要时连同 atlas）。继续预览将可能得到 NaN 顶点。"
+          );
+        }
 
         // 注入自定义 extra 字段到 skeletonData（标准 spine-core 不解析这些字段）
         skeletonData.extra       = rawJson.extra       || {};

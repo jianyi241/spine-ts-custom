@@ -387,7 +387,6 @@ export class SkeletonJson {
 		skeletonData.extra = extra
 		skeletonData.extraConfig = extraConfig
 		skeletonData.extraSlot = extraSlot
-		console.log('skeletonData ===> ', skeletonData)
 		return skeletonData;
 	}
 
