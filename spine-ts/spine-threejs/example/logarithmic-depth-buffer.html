@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>spine-threejs</title>
+    <title>spine-threejs（对数深度缓冲）</title>
     <script src="https://unpkg.com/three@0.141.0/build/three.js"></script>
     <script src="../dist/iife/spine-threejs.js"></script>
     <script src="./OrbitalControls.js"></script>
@@ -15,6 +15,7 @@
     body,
     html {
       height: 100%;
+      background: #1a1a2e;
     }
 
     canvas {
@@ -33,72 +34,33 @@
         let canvas;
         let controls;
         let lastFrameTime = Date.now() / 1000;
+        let elapsedTime = 0;
 
-        let baseUrl = "assets/";
-        let skeletonFile = "raptor-pro.json";
+        let baseUrl = "assets/bengtie/";
+        let skeletonFile = "kv_42_web_a.json";
         let atlasFile = skeletonFile
           .replace("-pro", "")
           .replace("-ess", "")
           .replace(".json", ".atlas");
-        let animation = "walk";
+        /** 首选动画名；若 JSON 中不存在则自动回退 */
+        let animation = "animation";
 
-        function init() {
-          // create the THREE.JS camera, scene and renderer (WebGL)
-          let width = window.innerWidth,
-            height = window.innerHeight;
-          camera = new THREE.PerspectiveCamera(75, width / height, 1, 3000);
-          camera.position.y = 100;
-          camera.position.z = 400;
-          scene = new THREE.Scene();
-          renderer = new THREE.WebGLRenderer({ logarithmicDepthBuffer: true });
-          renderer.setSize(width, height);
-          document.body.appendChild(renderer.domElement);
-          canvas = renderer.domElement;
-          controls = new OrbitControls(camera, renderer.domElement);
-
-          // load the assets required to display the Raptor model
-          assetManager = new spine.AssetManager(baseUrl);
-          assetManager.loadText(skeletonFile);
-          assetManager.loadTextureAtlas(atlasFile);
-
-          requestAnimationFrame(load);
+        function pickAnimationName(skeletonData, preferred) {
+          if (skeletonData.findAnimation(preferred)) return preferred;
+          for (var i = 0; i < skeletonData.animations.length; i++) {
+            var n = skeletonData.animations[i].name;
+            if (n === "walk" || n === "animation") return n;
+          }
+          return skeletonData.animations.length
+            ? skeletonData.animations[0].name
+            : null;
         }
 
-        function load(name, scale) {
-          if (assetManager.isLoadingComplete()) {
-            // Add a box to the scene to which we attach the skeleton mesh
-            geometry = new THREE.BoxGeometry(200, 200, 200);
-            material = new THREE.MeshBasicMaterial({
-              color: 0xff0000,
-              wireframe: true,
-            });
-            mesh = new THREE.Mesh(geometry, material);
-            scene.add(mesh);
-
-            // Load the texture atlas using name.atlas and name.png from the AssetManager.
-            // The function passed to TextureAtlas is used to resolve relative paths.
-            atlas = assetManager.require(atlasFile);
-
-            // Create a AtlasAttachmentLoader that resolves region, mesh, boundingbox and path attachments
-            atlasLoader = new spine.AtlasAttachmentLoader(atlas);
-
-            // Create a SkeletonJson instance for parsing the .json file.
-            let skeletonJson = new spine.SkeletonJson(atlasLoader);
-
-            // Set the scale to apply during parsing, parse the file, and create a new skeleton.
-            skeletonJson.scale = 0.4;
-            let skeletonData = skeletonJson.readSkeletonData(
-              assetManager.require(skeletonFile)
-            );
-
-            // Create a SkeletonMesh from the data and attach it to the scene
-            // Provide a custom vertex/fragment shader pair that supports
-            // the logarithmic depth buffer.
-            // See https://discourse.threejs.org/t/shadermaterial-render-order-with-logarithmicdepthbuffer-is-wrong/49221/3
-            skeletonMesh = new spine.SkeletonMesh(
-              skeletonData,
-              (materialParameters) => {
-                materialParameters.vertexShader = `
+        /** 与默认 SkeletonMeshMaterial 一致使用 diffuse；并接入 log depth（与 index 的 depthTest 行为对齐） */
+        function applyLogDepthSpineMaterial(materialParameters) {
+          materialParameters.depthTest = false;
+          materialParameters.depthWrite = false;
+          materialParameters.vertexShader = `
                 attribute vec4 color;
                 varying vec2 vUv;
                 varying vec4 vColor;
@@ -109,13 +71,13 @@
                 void main() {
                   vUv = uv;
                   vColor = color;
-                  gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);
+                  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                   #include <logdepthbuf_vertex>
                 }
                 `;
 
-                materialParameters.fragmentShader = `
-                uniform sampler2D map;
+          materialParameters.fragmentShader = `
+                uniform sampler2D diffuse;
                 #ifdef USE_SPINE_ALPHATEST
                 uniform float alphaTest;
                 #endif
@@ -128,40 +90,109 @@
                 void main(void) {
                   #include <logdepthbuf_fragment>
 
-                  gl_FragColor = texture2D(map, vUv)*vColor;
+                  gl_FragColor = texture2D(diffuse, vUv) * vColor;
                   #ifdef USE_SPINE_ALPHATEST
                   if (gl_FragColor.a < alphaTest) discard;
                   #endif
                 }
                 `;
-              }
+        }
+
+        function init() {
+          let width = window.innerWidth,
+            height = window.innerHeight;
+          camera = new THREE.PerspectiveCamera(75, width / height, 1, 3000);
+          camera.position.y = 0;
+          camera.position.z = 600;
+          scene = new THREE.Scene();
+          renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: true,
+            logarithmicDepthBuffer: true,
+          });
+          renderer.setSize(width, height);
+          renderer.setClearColor(0x1a1a2e, 1);
+          document.body.appendChild(renderer.domElement);
+          canvas = renderer.domElement;
+          controls = new OrbitControls(camera, renderer.domElement);
+
+          assetManager = new spine.AssetManager(baseUrl);
+          assetManager.loadText(skeletonFile);
+          assetManager.loadTextureAtlas(atlasFile);
+
+          requestAnimationFrame(load);
+        }
+
+        function load() {
+          if (assetManager.isLoadingComplete()) {
+            geometry = new THREE.BoxGeometry(1, 1, 1);
+            material = new THREE.MeshBasicMaterial({ visible: false });
+            mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            var atlas = assetManager.require(atlasFile);
+            var atlasLoader = new spine.AtlasAttachmentLoader(atlas);
+            var skeletonJson = new spine.SkeletonJson(atlasLoader);
+            skeletonJson.scale = 0.35;
+
+            var rawText = assetManager.require(skeletonFile);
+            var rawJson = JSON.parse(rawText);
+            var skeletonData = skeletonJson.readSkeletonData(rawText);
+
+            var exportVer = skeletonData.version || "";
+            if (exportVer && exportVer.indexOf("4.2") !== 0) {
+              console.warn(
+                "[Spine] 骨骼 JSON 的 skeleton.spine 为 " +
+                  exportVer +
+                  "，与当前 4.2 运行时不匹配。请用 Spine Editor 4.2.x 重新导出。"
+              );
+            }
+
+            skeletonData.extra = rawJson.extra || {};
+            skeletonData.extraSlot = rawJson.extraSlot || {};
+            skeletonData.extraConfig = rawJson.extraConfig || { timeScale: 1 };
+
+            var animName = pickAnimationName(skeletonData, animation);
+            if (!animName) {
+              console.error("JSON 中没有任何动画:", skeletonFile);
+              return;
+            }
+            if (animName !== animation) {
+              console.warn(
+                '[logarithmic-depth-buffer] 未找到动画 "' +
+                  animation +
+                  '"，已改用 "' +
+                  animName +
+                  '"'
+              );
+            }
+
+            // 对数深度：自定义 shader 必须与 MeshBatcher 使用的 diffuse 一致，否则会丢贴图
+            // https://discourse.threejs.org/t/shadermaterial-render-order-with-logarithmicdepthbuffer-is-wrong/49221/3
+            skeletonMesh = new spine.SkeletonMesh(
+              skeletonData,
+              applyLogDepthSpineMaterial
             );
-            skeletonMesh.state.setAnimation(0, animation, true);
+            skeletonMesh.state.setAnimation(0, animName, true);
             mesh.add(skeletonMesh);
 
             requestAnimationFrame(render);
           } else requestAnimationFrame(load);
         }
 
-        let lastTime = Date.now();
         function render() {
-          // calculate delta time for animation purposes
           let now = Date.now() / 1000;
           let delta = now - lastFrameTime;
           lastFrameTime = now;
+          elapsedTime += delta;
 
-          // resize canvas to use full page, adjust camera/renderer
           resize();
-
-          // Update orbital controls
           controls.update();
 
-          // update the animation
-          skeletonMesh.update(delta);
+          // 与 index.html 相同：第二参数为累计时间，驱动 extra 里 GSAP / 弹簧等扩展动效
+          skeletonMesh.update(delta, elapsedTime);
 
-          // render the scene
           renderer.render(scene, camera);
-
           requestAnimationFrame(render);
         }
 
